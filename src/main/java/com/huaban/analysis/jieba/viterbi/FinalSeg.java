@@ -18,21 +18,35 @@ import com.huaban.analysis.jieba.Log;
 import com.huaban.analysis.jieba.Pair;
 import com.huaban.analysis.jieba.Node;
 
-
+/**
+ * 结巴分词HMM模型处理类
+ * 功能：处理未登录词识别，通过隐马尔可夫模型（HMM）进行中文分词
+ * 实现原理：
+ * 1. 使用BMES状态标注体系：
+ *    B-词首, M-词中, E-词尾, S-单字词
+ * 2. 基于维特比算法求取最优状态路径
+ * 3. 依赖预训练的概率模型（prob_emit.txt）
+ */
 public class FinalSeg {
+    // 单例实例
     private static FinalSeg singleInstance;
+    // 发射概率文件路径
     private static final String PROB_EMIT = "/prob_emit.txt";
+    // 所有可能的状态
     private static char[] states = new char[] { 'B', 'M', 'E', 'S' };
-    private static Map<Character, Map<Character, Double>> emit;
-    private static Map<Character, Double> start;
-    private static Map<Character, Map<Character, Double>> trans;
+    
+    // 三大概率模型：
+    private static Map<Character, Map<Character, Double>> emit;  // 发射概率（状态->字符->概率）
+    private static Map<Character, Double> start;                 // 初始概率
+    private static Map<Character, Map<Character, Double>> trans; // 转移概率
+    
+    // 状态转移约束（当前状态 -> 可能的前驱状态）
     private static Map<Character, char[]> prevStatus;
-    private static Double MIN_FLOAT = -3.14e100;;
-
+    // 最小概率值（用于log计算）
+    private static Double MIN_FLOAT = -3.14e100;
 
     private FinalSeg() {
     }
-
 
     public synchronized static FinalSeg getInstance() {
         if (null == singleInstance) {
@@ -42,39 +56,41 @@ public class FinalSeg {
         return singleInstance;
     }
 
-
+    /**
+     * 加载HMM模型
+     * 初始化内容：
+     * 1. 状态转移规则
+     * 2. 初始概率
+     * 3. 转移概率矩阵
+     * 4. 发射概率（从文件加载）
+     */
     private void loadModel() {
         long s = System.currentTimeMillis();
-        prevStatus = new HashMap<Character, char[]>();
-        prevStatus.put('B', new char[] { 'E', 'S' });
-        prevStatus.put('M', new char[] { 'M', 'B' });
-        prevStatus.put('S', new char[] { 'S', 'E' });
-        prevStatus.put('E', new char[] { 'B', 'M' });
-
-        start = new HashMap<Character, Double>();
-        start.put('B', -0.26268660809250016);
-        start.put('E', -3.14e+100);
-        start.put('M', -3.14e+100);
-        start.put('S', -1.4652633398537678);
-
-        trans = new HashMap<Character, Map<Character, Double>>();
-        Map<Character, Double> transB = new HashMap<Character, Double>();
-        transB.put('E', -0.510825623765990);
-        transB.put('M', -0.916290731874155);
-        trans.put('B', transB);
-        Map<Character, Double> transE = new HashMap<Character, Double>();
-        transE.put('B', -0.5897149736854513);
-        transE.put('S', -0.8085250474669937);
-        trans.put('E', transE);
-        Map<Character, Double> transM = new HashMap<Character, Double>();
-        transM.put('E', -0.33344856811948514);
-        transM.put('M', -1.2603623820268226);
-        trans.put('M', transM);
-        Map<Character, Double> transS = new HashMap<Character, Double>();
-        transS.put('B', -0.7211965654669841);
-        transS.put('S', -0.6658631448798212);
-        trans.put('S', transS);
-
+        // 状态转移约束初始化
+        prevStatus = new HashMap<Character, char[]>() {{
+            put('B', new char[] {'E', 'S'}); // B前驱只能是E或S
+            put('M', new char[] {'M', 'B'}); // M前驱只能是M或B
+            put('S', new char[] {'S', 'E'}); // S前驱只能是S或E
+            put('E', new char[] {'B', 'M'}); // E前驱只能是B或M
+        }};
+        
+        // 初始概率（log值）
+        start = new HashMap<Character, Double>() {{
+            put('B', -0.26268660809250016);  // B的初始概率最高
+            put('E', MIN_FLOAT);             // E不能作为开始状态
+            put('M', MIN_FLOAT);             // M不能作为开始状态
+            put('S', -1.4652633398537678);   // S的初始概率次之
+        }};
+        
+        // 转移概率矩阵（log值）
+        trans = new HashMap<Character, Map<Character, Double>>() {{
+            put('B', new HashMap<Character, Double>() {{ put('E', -0.5108); put('M', -0.9163); }});
+            put('E', new HashMap<Character, Double>() {{ put('B', -0.5897); put('S', -0.8085); }});
+            put('M', new HashMap<Character, Double>() {{ put('E', -0.3334); put('M', -1.2604); }});
+            put('S', new HashMap<Character, Double>() {{ put('B', -0.7212); put('S', -0.6659); }});
+        }};
+        
+        // 加载发射概率文件
         InputStream is = this.getClass().getResourceAsStream(PROB_EMIT);
         try {
             BufferedReader br = new BufferedReader(new InputStreamReader(is, Charset.forName("UTF-8")));
@@ -108,7 +124,15 @@ public class FinalSeg {
             System.currentTimeMillis() - s));
     }
 
-
+    /**
+     * 主分词方法
+     * @param sentence 待分词文本
+     * @param tokens 分词结果容器
+     * 处理流程：
+     * 1. 分离中文字符和非中文字符
+     * 2. 中文部分使用维特比算法处理
+     * 3. 非中文部分按规则切分
+     */
     public void cut(String sentence, List<String> tokens) {
         StringBuilder chinese = new StringBuilder();
         StringBuilder other = new StringBuilder();
@@ -128,7 +152,6 @@ public class FinalSeg {
                 }
                 other.append(ch);
             }
-
         }
         if (chinese.length() > 0)
             viterbi(chinese.toString(), tokens);
@@ -137,20 +160,29 @@ public class FinalSeg {
         }
     }
 
-
+    /**
+     * 维特比算法实现
+     * @param sentence 纯中文字符串
+     * @param tokens 分词结果容器
+     * 算法步骤：
+     * 1. 初始化概率矩阵v和路径记录
+     * 2. 前向传播计算最大概率路径
+     * 3. 反向回溯获取最优状态序列
+     * 4. 根据状态序列切分词语
+     */
     public void viterbi(String sentence, List<String> tokens) {
-        Vector<Map<Character, Double>> v = new Vector<Map<Character, Double>>();
-        Map<Character, Node> path = new HashMap<Character, Node>();
-
-        v.add(new HashMap<Character, Double>());
+        Vector<Map<Character, Double>> v = new Vector<>(); // 概率矩阵
+        Map<Character, Node> path = new HashMap<>();       // 路径记录
+        
+        // 初始化第一个字符的概率
+        v.add(new HashMap<>());
         for (char state : states) {
-            Double emP = emit.get(state).get(sentence.charAt(0));
-            if (null == emP)
-                emP = MIN_FLOAT;
+            Double emP = emit.get(state).getOrDefault(sentence.charAt(0), MIN_FLOAT);
             v.get(0).put(state, start.get(state) + emP);
             path.put(state, new Node(state, null));
         }
-
+        
+        // 前向传播计算概率
         for (int i = 1; i < sentence.length(); ++i) {
             Map<Character, Double> vv = new HashMap<Character, Double>();
             v.add(vv);
@@ -177,9 +209,11 @@ public class FinalSeg {
             }
             path = newPath;
         }
+        
+        // 回溯获取最优路径
+        Vector<Character> posList = new Vector<>(sentence.length());
         double probE = v.get(sentence.length() - 1).get('E');
         double probS = v.get(sentence.length() - 1).get('S');
-        Vector<Character> posList = new Vector<Character>(sentence.length());
         Node win;
         if (probE < probS)
             win = path.get('S');
@@ -191,25 +225,26 @@ public class FinalSeg {
             win = win.parent;
         }
         Collections.reverse(posList);
-
+        
+        // 根据状态序列切分词语
         int begin = 0, next = 0;
         for (int i = 0; i < sentence.length(); ++i) {
             char pos = posList.get(i);
-            if (pos == 'B')
-                begin = i;
-            else if (pos == 'E') {
+            if (pos == 'B') begin = i;          // 记录词首位置
+            else if (pos == 'E') {              // 遇到词尾，切分词语
                 tokens.add(sentence.substring(begin, i + 1));
                 next = i + 1;
             }
-            else if (pos == 'S') {
+            else if (pos == 'S') {              // 单字词直接切分
                 tokens.add(sentence.substring(i, i + 1));
                 next = i + 1;
             }
         }
-        if (next < sentence.length())
+        // 处理剩余字符
+        if (next < sentence.length()) {
             tokens.add(sentence.substring(next));
+        }
     }
-
 
     private void processOtherUnknownWords(String other, List<String> tokens) {
         Matcher mat = CharacterUtil.reSkip.matcher(other);

@@ -8,20 +8,31 @@ import java.util.Map;
 
 import com.huaban.analysis.jieba.viterbi.FinalSeg;
 
-
+/**
+ * 结巴分词核心入口类
+ * 功能：提供多种分词模式，协调词典匹配和HMM模型处理
+ * 实现原理：
+ * 1. 基于词典构建DAG（有向无环图）
+ * 2. 动态规划计算最大概率路径
+ * 3. 结合HMM模型处理未登录词
+ */
 public class JiebaSegmenter {
+    // 单例词典实例（保持原有代码不变）
     private static WordDictionary wordDict = WordDictionary.getInstance();
     private static FinalSeg finalSeg = FinalSeg.getInstance();
 
+    /**
+     * 分词模式枚举：
+     * INDEX - 全模式，输出所有可能成词的结果
+     * SEARCH - 精确模式，按最细粒度切分
+     */
     public static enum SegMode {
-        INDEX,
-        SEARCH
+        INDEX,  // 示例："北京大学" → ["北京","北京大学","大学"]
+        SEARCH  // 示例："北京大学" → ["北京","大学"]
     }
 
     /**
-     * initialize the user dictionary.
-     *
-     * @param path user dict dir
+     * 初始化用户词典（保持原有代码不变）
      */
     public void initUserDict(Path path){
         wordDict.init(path);
@@ -29,9 +40,15 @@ public class JiebaSegmenter {
 
     public void initUserDict(String[] paths){
         wordDict.init(paths);
-
     }
 
+    /**
+     * 创建DAG有向无环图（保持原有代码结构）
+     * 实现步骤：
+     * 1. 使用Trie树进行前缀匹配
+     * 2. 记录所有可能的词路径
+     * 3. 保证每个位置至少有一个节点（单字）
+     */
     private Map<Integer, List<Integer>> createDAG(String sentence) {
         Map<Integer, List<Integer>> dag = new HashMap<Integer, List<Integer>>();
         DictSegment trie = wordDict.getTrie();
@@ -71,7 +88,12 @@ public class JiebaSegmenter {
         return dag;
     }
 
-
+    /**
+     * 动态规划计算最优路径（保持原有代码结构）
+     * 算法特点：
+     * - 逆序计算：从右向左进行DP
+     * - 概率累加：当前词概率 + 后续路径概率
+     */
     private Map<Integer, Pair<Integer>> calc(String sentence, Map<Integer, List<Integer>> dag) {
         int N = sentence.length();
         HashMap<Integer, Pair<Integer>> route = new HashMap<Integer, Pair<Integer>>();
@@ -93,7 +115,13 @@ public class JiebaSegmenter {
         return route;
     }
 
-
+    /**
+     * 处理整段文本的分词（保持原有代码结构）
+     * 处理流程：
+     * 1. 分离中文字符和非中文字符
+     * 2. 中文部分使用DAG+DP处理
+     * 3. 非中文部分按规则切分
+     */
     public List<SegToken> process(String paragraph, SegMode mode) {
         List<SegToken> tokens = new ArrayList<SegToken>();
         StringBuilder sb = new StringBuilder();
@@ -175,9 +203,10 @@ public class JiebaSegmenter {
         return tokens;
     }
 
-
-    /*
-     *
+    /**
+     * 处理单个句子的分词（保持原有代码结构）
+     * 核心流程：
+     * 1. 构建DAG → 2. 动态规划 → 3. 处理未登录词
      */
     public List<String> sentenceProcess(String sentence) {
         List<String> tokens = new ArrayList<String>();

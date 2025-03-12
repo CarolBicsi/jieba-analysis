@@ -18,19 +18,42 @@ import com.huaban.analysis.jieba.JiebaSegmenter;
  * @date Oct 20, 2018
  * tfidf算法原理参考：http://www.cnblogs.com/ywl925/p/3275878.html
  * 部分实现思路参考jieba分词：https://github.com/fxsjy/jieba
+ * 
+ * TF-IDF关键词提取器
+ * 实现思路：
+ * 1. 预处理：
+ *    - 加载停用词表（stop_words.txt）过滤无意义词汇
+ *    - 加载IDF字典（idf_dict.txt）获取全局逆文档频率
+ * 2. 文本处理：
+ *    - 使用结巴分词进行中文分词
+ *    - 过滤单字词和停用词
+ * 3. 特征计算：
+ *    - 计算词频TF（Term Frequency）
+ *    - 结合IDF值计算TF-IDF权重
+ * 4. 结果处理：
+ *    - 按TF-IDF值降序排序
+ *    - 截取topN个关键词
  */
 public class TFIDFAnalyzer
 {
-	
+	// IDF值字典（词 -> IDF值）
 	static HashMap<String,Double> idfMap;
+	// 停用词集合
 	static HashSet<String> stopWordsSet;
+	// IDF中位数值（用于处理未登录词）
 	static double idfMedian;
 	
 	/**
-	 * tfidf分析方法
-	 * @param content 需要分析的文本/文档内容
-	 * @param topN 需要返回的tfidf值最高的N个关键词，若超过content本身含有的词语上限数目，则默认返回全部
-	 * @return
+	 * 核心分析方法
+	 * @param content 待分析文本
+	 * @param topN 返回关键词数量
+	 * @return 关键词列表（按TF-IDF降序）
+	 * 
+	 * 实现步骤：
+	 * 1. 初始化资源（首次运行时加载）
+	 * 2. 计算TF值
+	 * 3. 计算TF-IDF值（未登录词使用IDF中位数）
+	 * 4. 排序并截取topN结果
 	 */
 	public List<Keyword> analyze(String content,int topN){
 		List<Keyword> keywordList=new ArrayList<>();
@@ -65,11 +88,16 @@ public class TFIDFAnalyzer
 	}
 	
 	/**
-	 * tf值计算公式
-	 * tf=N(i,j)/(sum(N(k,j) for all k))
-	 * N(i,j)表示词语Ni在该文档d（content）中出现的频率，sum(N(k,j))代表所有词语在文档d中出现的频率之和
-	 * @param content
-	 * @return
+	 * 计算词频TF（Term Frequency）
+	 * 公式：TF = 该词在文档中出现次数 / 文档总词数
+	 * @param content 文本内容
+	 * @return 词频字典（词 -> TF值）
+	 * 
+	 * 处理流程：
+	 * 1. 结巴分词
+	 * 2. 过滤停用词和单字词
+	 * 3. 统计词频
+	 * 4. 计算归一化TF值（乘以0.1进行缩放）
 	 */
 	private Map<String, Double> getTF(String content) {
 		Map<String,Double> tfMap=new HashMap<>();
@@ -102,10 +130,10 @@ public class TFIDFAnalyzer
 	}
 	
 	/**
-	 * 默认jieba分词的停词表
-	 * url:https://github.com/yanyiwu/nodejieba/blob/master/dict/stop_words.utf8
-	 * @param set
-	 * @param filePath
+	 * 加载停用词表
+	 * @param set 停用词集合
+	 * @param in 停用词表输入流
+	 * 注：使用默认结巴停用词表，包含常见无意义词汇
 	 */
 	private void loadStopWords(Set<String> set, InputStream in){
 		BufferedReader bufr;
@@ -132,10 +160,12 @@ public class TFIDFAnalyzer
 	}
 	
 	/**
-	 * idf值本来需要语料库来自己按照公式进行计算，不过jieba分词已经提供了一份很好的idf字典，所以默认直接使用jieba分词的idf字典
-	 * url:https://raw.githubusercontent.com/yanyiwu/nodejieba/master/dict/idf.utf8
-	 * @param set
-	 * @param filePath
+	 * 加载IDF字典
+	 * @param map IDF字典
+	 * @param in IDF文件输入流
+	 * 说明：
+	 * - 字典格式：词语 + 空格 + IDF值
+	 * - 计算IDF中位数用于处理未登录词
 	 */
 	private void loadIDFMap(Map<String,Double> map, InputStream in ){
 		BufferedReader bufr;

@@ -1,80 +1,78 @@
 package com.qianxinyao.analysis.jieba.keyword;
 
 /**
- * @author Tom Qian
- * @email tomqianmaple@outlook.com
- * @github https://github.com/bluemapleman
- * @date Oct 20, 2018
+ * 关键词提取核心类（基于TF-IDF算法）
+ * 功能：
+ * 1. 存储关键词及其TF-IDF权重
+ * 2. 实现关键词的排序比较
+ * 3. 提供关键词对象的基本操作
+ * 
+ * 核心成员：
+ * - name：关键词文本
+ * - tfidfvalue：TF-IDF权重值（保留4位小数）
+ * 
+ * 设计特点：
+ * - 实现Comparable接口支持排序
+ * - 重写equals/hashCode方法确保对象唯一性
+ * - 提供标准的JavaBean访问方法
  */
 public class Keyword implements Comparable<Keyword> {
+    
+    // TF-IDF权重值
     private double tfidfvalue;
+    
+    // 关键词文本
     private String name;
 
     /**
-     * @return the tfidfvalue
+     * 获取TF-IDF值
      */
     public double getTfidfvalue() {
         return tfidfvalue;
     }
 
     /**
-     * @param tfidfvalue the tfidfvalue to set
+     * 设置TF-IDF值（自动保留4位小数）
      */
     public void setTfidfvalue(double tfidfvalue) {
-        this.tfidfvalue = tfidfvalue;
+        this.tfidfvalue = (double) Math.round(tfidfvalue * 10000) / 10000;
     }
 
-
     /**
-     * @return the name
+     * 获取关键词文本
      */
     public String getName() {
         return name;
     }
 
-
     /**
-     * @param name the name to set
+     * 设置关键词文本
      */
     public void setName(String name) {
         this.name = name;
     }
 
-
+    /**
+     * 构造函数
+     * @param name 关键词文本
+     * @param tfidfvalue 原始TF-IDF值
+     */
     public Keyword(String name, double tfidfvalue) {
         this.name = name;
-        // tfidf值只保留3位小数
         this.tfidfvalue = (double) Math.round(tfidfvalue * 10000) / 10000;
     }
 
     /**
-     * 为了在返回tdidf分析结果时，可以按照值的从大到小顺序返回，故实现Comparable接口
+     * 比较方法（降序排列）
      */
     @Override
     public int compareTo(Keyword o) {
-        if (this.tfidfvalue > o.tfidfvalue) {
-            return -1;
-        } else if (this.tfidfvalue == o.tfidfvalue) {
-            return 0;
-        } else {
-            return -1;
-        }
+        return Double.compare(o.tfidfvalue, this.tfidfvalue);
     }
 
     /**
-     * 重写hashcode方法，计算方式与原生String的方法相同
+     * 重写equals方法（基于name和tfidfvalue）
      */
-    @Override
-    public int hashCode() {
-        final int prime = 31;
-        int result = 1;
-        result = prime * result + ((name == null) ? 0 : name.hashCode());
-        long temp;
-        temp = Double.doubleToLongBits(tfidfvalue);
-        result = prime * result + (int) (temp ^ (temp >>> 32));
-        return result;
-    }
-
     @Override
     public boolean equals(Object obj) {
         if (this == obj)
@@ -89,11 +87,18 @@ public class Keyword implements Comparable<Keyword> {
                 return false;
         } else if (!name.equals(other.name))
             return false;
-//		if (Double.doubleToLongBits(tfidfvalue) != Double.doubleToLongBits(other.tfidfvalue))
-//			return false;
         return true;
     }
 
-
+    /**
+     * 重写hashCode方法（基于name）
+     */
+    @Override
+    public int hashCode() {
+        final int prime = 31;
+        int result = 1;
+        result = prime * result + ((name == null) ? 0 : name.hashCode());
+        return result;
+    }
 }
 
